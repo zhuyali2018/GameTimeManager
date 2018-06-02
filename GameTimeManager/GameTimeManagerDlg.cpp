@@ -158,7 +158,7 @@ BOOL CGameTimeManagerDlg::OnInitDialog()
 	if (m_nMinBalance == 0) {
 		((CWnd*)GetDlgItem(IDStart))->EnableWindow(false);
 	}
-	// SaveStringSettings("passcodeHistory", "");
+	// SaveStringSettings("passcodeHistory", "NewDay");
 	// m_bDebugBox = TRUE;
 	// m_bDebug1 = TRUE;
 	return TRUE;  // return TRUE  unless you set the focus to a control
