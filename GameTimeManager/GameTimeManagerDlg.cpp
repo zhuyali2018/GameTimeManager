@@ -78,7 +78,7 @@ void CGameTimeManagerDlg::DoDataExchange(CDataExchange* pDX)
 {
 	CDialogEx::DoDataExchange(pDX);
 	DDX_Text(pDX, IDC_EDITminutes, m_nMinutes);
-	DDV_MinMaxInt(pDX, m_nMinutes, 10, 99);
+	DDV_MinMaxInt(pDX, m_nMinutes, 10, 1200);
 	DDX_Control(pDX, IDC_RICHEDIT21, m_ctrlBoard);
 	DDX_Text(pDX, IDC_EDITPASSCODE, m_strPasscode);
 }
@@ -414,6 +414,7 @@ BOOL CAboutDlg::OnInitDialog()
 		"version 3.0: Added passcode for adding time (2018.4.11)\n"
 		"version 3.2: Fixed code can be reused problem (2018.5.25)\n"
 		"version 3.3: Added Config.cfg (2018.5.31)\n"
+		"version 3.4: New Encode Algrithm, no minute digits restrictions, 10-1200 minutes range(2018.6.4)\n"
 		);
 	return TRUE;
 }
@@ -509,7 +510,6 @@ void CGameTimeManagerDlg::OnBnClickedBnadd()
 {
 	// TODO: Add your control notification handler code here
 	if (!UpdateData(1)) return;  //valid the number
-	debugbox("d1");
 	if (passcodeInvalid()) return;
 	setOnTop(false);
 	m_nMinBalance += m_nMinutes;
@@ -671,6 +671,16 @@ CString CGameTimeManagerDlg::GetConfigFileNameWithPath()
 #include <string>
 using namespace std;
 char table[] = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890";
+char Table[] = "abcdefghij"   //0
+               "klmnopqrst"	//1
+               "uvwxyzABCD"	//2
+               "EFGHIJKLMN"	//3
+               "OPQRSTUVWXYZ";	//4
+				//		 "YZ!@#$%^&*"	//5
+				//		 "()_+=-~`{}"	//6
+				//		 "[]|;:?,.;"	//7    (0-79)
+				//		 "0456789";
+
 int getIndex(char c) {
 	int len = strlen(table);
 	for (int i = 0; i < len; i++) {
@@ -680,51 +690,96 @@ int getIndex(char c) {
 	}
 	return -1;
 }
-string decode(const char * buf) {
-	int len = strlen(table);
-	char converted[10];
-	char b = buf[8];     //last char was base index
-						 //cout << "b=" << b << endl;
-	int index = getIndex(b);   //get index which is base + index
-							   //cout << "index=" << index << endl;
-	int i = 0;
-	for (i = 0; i < 8; i++) {
-		char c = buf[i];
-		//cout << "char" << i << ": " << c << endl;
-		int bindex = getIndex(c);
-		int asc = bindex - index;
-		char ch = asc + 0x30;
-		converted[i] = ch;
+int YaliDecode(BYTE *buf, UINT len, char *decoded)
+{
+	UINT uSize = strlen(Table);
+	UINT i = 0;	// index for buf
+	int j = 0;	// index for decoded
+	len = strlen((char*)buf);
+	while (i<len) {
+		if (buf[i] == '1') {
+			i++;
+			char *sub = strchr(Table, buf[i]);
+			int pos = sub - Table;
+			BYTE b = pos + uSize;
+			decoded[j] = b;
+			j++;
+			i++;
+		}
+		else if (buf[i] == '2') {
+			i++;
+			char *sub = strchr(Table, buf[i]);
+			int pos = sub - Table;
+			BYTE b = pos + 2 * uSize;
+			decoded[j] = b;
+			j++;
+			i++;
+		}
+		else if (buf[i] == '3') {
+			i++;
+			char *sub = strchr(Table, buf[i]);
+			int pos = sub - Table;
+			BYTE b = pos + 3 * uSize;
+			decoded[j] = b;
+			j++;
+			i++;
+		}
+		else if (buf[i] == '4') {
+			i++;
+			char *sub = strchr(Table, buf[i]);
+			int pos = sub - Table;
+			BYTE b = pos + 4 * uSize;
+			decoded[j] = b;
+			j++;
+			i++;
+		}
+		else if (buf[i] == '5') {
+			i++;
+			char *sub = strchr(Table, buf[i]);
+			int pos = sub - Table;
+			BYTE b = pos + 5 * uSize;
+			decoded[j] = b;
+			j++;
+			i++;
+		}
+		else {
+			char *sub = strchr(Table, buf[i]);
+			int pos = sub - Table;
+			BYTE b = pos;
+			decoded[j] = b;
+			j++;
+			i++;
+		}
 	}
-	converted[i] = 0;
-	return converted;
+	decoded[j] = 0;
+	return j;
 }
-
+string decode(const char * buf) {
+	char decoded[20];
+	YaliDecode((BYTE *)buf, 20, decoded);
+	return string(decoded);
+}
 BOOL CGameTimeManagerDlg::passcodeInvalid()
 {
 	UpdateData();
 	
 	int len = m_strPasscode.GetLength();
-	if (len != 9) {
-		::MessageBox(NULL, "Passcode len is invalid !", "Passcode check 1", MB_OK);
-		return 1;
-	}
-	debugbox("d2");
+	//if (len != 9) {
+	//	::MessageBox(NULL, "Passcode len is invalid !", "Passcode check 1", MB_OK);
+	//	return 1;
+	//}
+	//debugbox("d2");
 	if (passcodeUsedBefore()) {
 		::MessageBox(NULL, "The passcode has been used before !", "Passcode check 2", MB_OK);
 		return 1;
 	}
-	debugbox("d3");
 	string decoded = decode(m_strPasscode);
-	debugbox("d4");
 	string validcode = getValidCode();
-	debugbox("d5");
-	if (decoded == validcode) {
+	size_t pos = decoded.find(validcode);
+	if(pos==0){   //it has to match at position 0 to be valid
 		savePasscode();
-		debugbox("d6");
 		return 0;
 	}
-	debugbox("d7");
 	::MessageBox(NULL, "Passcode is invalid !", "Passcode check", MB_OK);
 	return 1;
 }
@@ -758,7 +813,6 @@ BOOL CGameTimeManagerDlg::passcodeUsedBefore()
 		    return true;
 		}
 	}
-	debugbox("d25");
 	return false;
 }
 
